@@ -1,17 +1,13 @@
 using StatsBase
+using LinearAlgebra
 
 ### Function iterating the basic model, with fixed linking probabilities.
 
 function networkiterate(netw, pn, pr, netsize)
     # one iteration of the basic model
     db = sample(1:netsize,2, replace=false); #sample a death and a birth, without replacement
-    #inherit = netw[:,db[2]].*(1.0-(rand(netsize)-pn .> 0.)); # socially inherited connections
-    inherit = netw[:,db[2]].*(floor(1.0-rand()+pn))
-    #randconn = (1-netw[:,db[2]]).*(floor(1.0-rand()+pr)); # random connections
-    randconn = zeros(netsize)
-    for(i) in 1:netsize
-        randconn[i] == (1-(netw[i,db[2]]))*(floor(1.0-rand()+pr))
-    end
+    inherit = netw[:,db[2]] .* (1 .- (rand(netsize) .- pn .> 0.)); # socially inherited connections
+    randconn = (1 .- netw[:,db[2]]).*(1 .- (rand(netsize) .- pr .> 0.)); # random connections
     newconn = inherit+randconn #total connections
     newconn[db[2]]=1; #connect to the parent
     netw[:,db[1]]=newconn; #replace the dead individual with the newborn
@@ -21,16 +17,9 @@ function networkiterate(netw, pn, pr, netsize)
 end
 
 ## Functions that calculate the payoffs for coauthor and pd games
-function coauthpi(netw, types, b, c, d, netsize::Int64=100)
-    #degrees = vec(sum(netw,1)) #calculate degrees
-    #degrees[degrees.==0]=1 #set zero degree individuals to 1, to avoid division by zero (this has no effect to anyone's payoff, b/c of multiplication w/ adjacency matrix)
-    degrees = zeros(netsize) #calculate degrees
-    for(i) in 1:netsize
-        degrees[i] = sum(netw[i])
-        if(degrees[i])==0
-            degrees[i]=1
-        end
-    end 
+function coauthpi(netw, types, b, c, d)
+    degrees = vec(sum(netw, dims=1)) #calculate degrees
+    degrees[degrees.==0] .= 1 #set zero degree individuals to 1, to avoid division by zero (this has no effect to anyone's payoff, b/c of multiplication w/ adjacency matrix)
     outben = (types)./degrees #benefit going out from each individual
     inben = netw*outben #benefit flowing into each individual
     synben= inben.*outben #the product of in and out flows
@@ -38,7 +27,7 @@ function coauthpi(netw, types, b, c, d, netsize::Int64=100)
 end
 
 function pdpi(netw, types, b, c, d)
-    degrees = vec(sum(netw,1))
+    degrees = vec(sum(netw, dims=1))
     inben = netw*types
     synben= inben.*types
     return(b*inben-(types*c).*degrees+d*synben)
@@ -51,43 +40,29 @@ function exppay(delta::Float64, pi::Array{Float64,1})
 end
 
 function linpay(delta::Float64, pi::Array{Float64,1})
-    clamp.(1 + delta*pi, 0, Inf)
+    clamp.(1 .+ delta*pi, 0, Inf)
 end
 ### Function iterating the network over one time-step while playing the coauthor game, with fixed linking probabilities
 
-function networkitCoauthor(netw::Array{Int64,2}, types::Array{Int64,1}, pn::Float64, pr::Float64, netsize::Int64, b::Float64, c::Float64, mu::Float64,d::Float64=0.0,delta::Float64=0.1,payfun::Function=exppay)
+function networkitCoauthor(netw::Array{Int64,2}, types::Array{Int64,1}, pn::Float64, pr::Float64, netsize::Int64, b::Float64, c::Float64, mu::Float64,d::Float64=0.0,delta::Float64=1.0,payfun::Function=linpay)
     death = rand(1:netsize); #sample a death at random
-    #degrees = vec(sum(netw,1)) #calculate degrees
-    degrees = zeros(netsize) #calculate degrees
-    for(i) in 1:netsize
-        degrees[i] = sum(netw[i])
-        if(degrees[i])==0
-            degrees[i]=1
-        end
-    end 
+    degrees = vec(sum(netw, dims=1)) #calculate degrees
 #    meandeg = mean(degrees)
-    #degrees[degrees.==0]=1 #set zero degree individuals to 1, to avoid division by zero (this has no effect to anyone's payoff, b/c of multiplication w/ adjacency matrix)
+    degrees[degrees.==0] .= 1 #set zero degree individuals to 1, to avoid division by zero (this has no effect to anyone's payoff, b/c of multiplication w/ adjacency matrix)
     outben = (types)./degrees #benefit going out from each individual
     inben = netw*outben #benefit flowing into each individual
-    synben= inben.*outben #the product of in and out flows
+    synben = inben.*outben #the product of in and out flows
     payoffs = payfun(delta, (b*inben - types*c + d*synben)) #calculate payoffs
 #    meanpayoff = mean(payoffs)
-    payoffs[death]=0 #the dying individual gets 0 payoff (i.e., can't give birth)
-    payoffw=Weights(payoffs);
+    payoffs[death] = 0 #the dying individual gets 0 payoff (i.e., can't give birth)
+    payoffw=weights(payoffs);
     birth = sample(1:netsize,payoffw) #sample parent with probability proportional to payoff
     ## The rest proceeds as before, except we need to assign type to the newborn
-    #newconn = netw[:,birth].*(1.0-(rand(netsize)-pn .> 0.)) + (1-netw[:,birth]).*(1.0-(rand(netsize)-pr .> 0.)) #total connections
-    inherit = netw[:,birth].*(floor(1.0-rand()+pn))
-    #randconn = (1-netw[:,db[2]]).*(floor(1.0-rand()+pr)); # random connections
-    randconn = zeros(netsize)
-    for(i) in 1:netsize
-        randconn[i] == (1-(netw[i,birth]))*(floor(1.0-rand()+pr))
-    end
-    newconn = inherit+randconn #total connections
-    newconn[birth]=1; #connect to the parent
-    netw[:,death]=newconn; #replace the dead individual with the newborn
-    netw[death,:]=newconn; #same
-    netw[death,death]=0; #set self-link equal to zero
+    newconn = netw[:,birth] .* (1 .- (rand(netsize) .- pn .> 0.)) + (1 .- netw[:,birth]) .* (1 .- (rand(netsize) .- pr .> 0.)) #total connections
+    newconn[birth] = 1; #connect to the parent
+    netw[:,death] = newconn; #replace the dead individual with the newborn
+    netw[death,:] = newconn; #same
+    netw[death,death] = 0; #set self-link equal to zero
     types[death] = mod(types[birth]+(rand()<mu),2) # copy the parent's type, mutate with probability mu
     return (netw,types)
 end
@@ -96,25 +71,25 @@ end
 
 function networkitCoauthorEvolLink(netw::Array{Int64,2}, types::Array{Int64,1}, pns::Array{Float64,1}, prs::Array{Float64,1}, netsize::Int64, b::Float64, c::Float64, mu::Float64, mulink::Float64, sigmapn::Float64, sigmapr::Float64,clink::Float64=0.0, d::Float64=0.0, delta::Float64=1.0,payfun::Function=linpay)
     death = rand(1:netsize); #sample a death at random
-    degrees = vec(sum(netw,1))
+    degrees = vec(sum(netw, dims=1))
 #    meandeg = mean(degrees)
-    degrees[degrees.==0]=1 #set zero degree individuals to 1, to avoid division by zero (this has no effect to anyone's payoff, b/c of multiplication w/ adjacency matrix)
+    degrees[degrees.==0] .= 1 #set zero degree individuals to 1, to avoid division by zero (this has no effect to anyone's payoff, b/c of multiplication w/ adjacency matrix)
     outben = (types)./degrees #proportional (to b) benefit going out from each individual
     inben = netw*outben
     synben= inben.*outben
-    payoffs = payfun(delta, b*inben- types* c + synben*d - vec(sum(netw,1))*clink) #calculate payoffs
+    payoffs = payfun(delta, b*inben- types* c + synben*d - vec(sum(netw, dims=1))*clink) #calculate payoffs
 #    meanpayoff = mean(payoffs)
-    payoffs[death]=0 #the dying individual gets 0 payoff (i.e., can't give birth)
-    payoffw=Weights(payoffs)
+    payoffs[death] = 0 #the dying individual gets 0 payoff (i.e., can't give birth)
+    payoffw = weights(payoffs)
     birth = sample(1:netsize,payoffw) #sample parent with probability proportional to payoff
     ## The rest proceeds as before, except we need to assign type to the newborn
     pns[death]=clamp.(pns[birth]+(rand()<mulink)*randn()*sigmapn,0,1) #copy parent's linking probabilities, with possible mutation
     prs[death]=clamp.(prs[birth]+(rand()<mulink)*randn()*sigmapr,0,1)
-    newconn = netw[:,birth].*(1.0-(rand(netsize)-pns[death] .> 0.)) + (1-netw[:,birth]).*(1.0-(rand(netsize)-prs[death] .> 0.)) #total connections
-    newconn[birth]=1; #connect to the parent
+    newconn = netw[:,birth] .* (1 .- (rand(netsize) .- pns[death] .> 0.)) + (1 .- netw[:,birth]) .* (1 .- (rand(netsize) .- prs[death] .> 0.)) #total connections
+    newconn[birth] = 1; #connect to the parent
     netw[:,death]=newconn; #replace the dead individual with the newborn
     netw[death,:]=newconn; #same
-    netw[death,death]=0; #set self-link equal to zero
+    netw[death,death] = 0; #set self-link equal to zero
     types[death] = mod(types[birth]+(rand()<mu),2) # copy the parent's type, mutate with probability mu
     return (netw,types,pns,prs)
 end
@@ -123,44 +98,44 @@ end
 
 function networkitPD(netw, types, pn, pr, netsize, b, c, mu, d=0.0,delta::Float64=1.0,payfun::Function=linpay)
     death = rand(1:netsize); #sample a death at random
-    degrees = vec(sum(netw,1))
+    degrees = vec(sum(netw, dims=1))
     inben = netw*types
     synben= inben.*types
     payoffs = payfun(delta, b*inben-(types*c).*degrees+d*synben) #calculate payoffs
 #    meanpayoff = mean(payoffs)
-    payoffs[death]=0 #the dying individual gets 0 payoff (i.e., can't give birth)
-    payoffw=Weights(payoffs);
+    payoffs[death] = 0 #the dying individual gets 0 payoff (i.e., can't give birth)
+    payoffw=weights(payoffs);
     birth = sample(1:netsize,payoffw) #sample parent with probability proportional to payoff
     ## The rest proceeds as before, except we need to assign type to the newborn
-    newconn = netw[:,birth].*(1.0-(rand(netsize)-pn .> 0.)) + (1-netw[:,birth]).*(1.0-(rand(netsize)-pr .> 0.)) #total connections
-    newconn[birth]=1; #connect to the parent
-    netw[:,death]=newconn; #replace the dead individual with the newborn
-    netw[death,:]=newconn; #same
-    netw[death,death]=0; #set self-link equal to zero
+    newconn = netw[:,birth] .* (1 .- (rand(netsize) .- pn .> 0.)) + (1 .- netw[:,birth]) .* (1 .- (rand(netsize) .- pr .> 0.)) #total connections
+    newconn[birth] = 1; #connect to the parent
+    netw[:,death] = newconn; #replace the dead individual with the newborn
+    netw[death,:] = newconn; #same
+    netw[death,death] = 0; #set self-link equal to zero
     types[death] = mod(types[birth]+(rand()<mu),2) # copy the parent's type, mutate with probability mu
     return (netw,types)
 end
 
 ### This is again the PD game, but with evolving linking probabilities
 
-function networkitPDEvolLink(netw::Array{Int64,2}, types::Array{Int64,1}, pns::Array{Float64,1}, prs::Array{Float64,1}, netsize::Int64, b::Float64, c::Float64, mu::Float64, mulink::Float64, sigmapn::Float64, sigmapr::Float64,clink::Float64=0.0,d::Float64=0.0,delta::Float64=1.0,payfun::Function=linpay)
+function networkitPDEvolLink(netw::Array{Int64,2}, types::Array{Int64,1}, pns::Array{Float64,1}, prs::Array{Float64,1}, netsize::Int64, b::Float64, c::Float64, mu::Float64, mulink::Float64, sigmapn::Float64, sigmapr::Float64,clink::Float64=0,d::Float64=0.0,delta::Float64=1.0,payfun::Function=linpay)
     death = rand(1:netsize); #sample a death at random
-    degrees = vec(sum(netw,1))
+    degrees = vec(sum(netw, dims=1))
     inben = netw*types
     synben= inben.*types
     payoffs = payfun(delta, b*inben-(types*c).*degrees+d*synben) #calculate payoffs
 #    meanpayoff = mean(payoffs)
-    payoffs[death]=0 #the dying individual gets 0 payoff (i.e., can't give birth)
-    payoffw=Weights(payoffs)
+    payoffs[death] = 0 #the dying individual gets 0 payoff (i.e., can't give birth)
+    payoffw = weights(payoffs)
     birth = sample(1:netsize,payoffw) #sample parent with probability proportional to payoff
     ## The rest proceeds as before, except we need to assign type to the newborn
-    pns[death]=clamp.(pns[birth]+(rand()<mulink)*randn()*sigmapn,0,1) #copy parent's linking probabilities, with possible mutation
-    prs[death]=clamp.(prs[birth]+(rand()<mulink)*randn()*sigmapr,0,1)
-    newconn = netw[:,birth].*(1.0-(rand(netsize)-pns[death] .> 0.)) + (1-netw[:,birth]).*(1.0-(rand(netsize)-prs[death] .> 0.)) #total connections
-    newconn[birth]=1; #connect to the parent
-    netw[:,death]=newconn; #replace the dead individual with the newborn
-    netw[death,:]=newconn; #same
-    netw[death,death]=0; #set self-link equal to zero
+    pns[death] = clamp.(pns[birth]+(rand()<mulink)*randn()*sigmapn,0,1) #copy parent's linking probabilities, with possible mutation
+    prs[death] = clamp.(prs[birth]+(rand()<mulink)*randn()*sigmapr,0,1)
+    newconn = netw[:,birth].*(1 .- (rand(netsize) .- pns[death] .> 0.)) + (1 .- netw[:,birth]) .* (1 .- (rand(netsize) .- prs[death] .> 0.)) #total connections
+    newconn[birth] = 1; #connect to the parent
+    netw[:,death] = newconn; #replace the dead individual with the newborn
+    netw[death,:] = newconn; #same
+    netw[death,death] = 0; #set self-link equal to zero
     types[death] = mod(types[birth]+(rand()<mu),2) # copy the parent's type, mutate with probability mu
     return (netw,types,pns,prs)
 end
@@ -176,7 +151,7 @@ function runSim(;pn::Float64=0.5, pr::Float64=0.1, netsize::Int64=100, generatio
     ## Initialize the network randomly
     netw=rand([0,1],(netsize,netsize));
     netw = netw .* transpose(netw);
-    netw = (1-diagm([1 for i=1:netsize])).*netw;
+    netw = (1 .- diagm([1 for i=1:netsize])) .* netw;
     for i in 1:(netsize*20) ##First iterate the network for 20 generations (i.e., 20*netsize time steps) neutrally to get a steady state network
       netw = networkiterate(netw,pn,pr,netsize)
     end
@@ -204,10 +179,10 @@ end
       for i in 1:(generations*retint)
         netw, types, pns, prs = funevollink(netw,types,pns,prs,netsize,b,c,mu,mulink,sigmapn,sigmapr,clink,d,delta,payfun)
         if mod(i,retint)==0
-          degrees = vec(sum(netw,1))
+          degrees = vec(sum(netw,dims=1))
           mdeg = mean(degrees)
           payoffs = payfun(delta, pifun(netw,types,b,c,d))
-          mpay=mean(payoffs)
+          mpay = mean(payoffs)
           pnhist[div(i,retint)]=mean(pns)
           prhist[div(i,retint)]=mean(prs)
           typehist[div(i,retint)]=mean(types)
@@ -228,10 +203,10 @@ end
       for i in 1:(generations*retint)
         netw, types = funnoevollink(netw,types,pn,pr,netsize,b,c,mu,d,delta,payfun)
         if mod(i,retint)==0
-            degrees = vec(sum(netw,1))
+            degrees = vec(sum(netw, dims=1))
             mdeg = mean(degrees)
             payoffs = payfun(delta, pifun(netw,types,b,c,d))
-            mpay=mean(payoffs)
+            mpay = mean(payoffs)
             typehist[div(i,retint)]=mean(types)
             degreehist[div(i, retint)]=mdeg
             payoffhist[div(i, retint)]=mpay
@@ -243,17 +218,15 @@ end
 
 ## Version of the main simulation function that also saves the full network and type vector, every netsaveint times it saves the mean values.
 
-function runSimNetSave(pn::Float64=0.5, pr::Float64=0.1, netsize::Int64=100, generations::Int64=100, b::Float64=1.0, c::Float64=0.5, d::Float64=0.0, mu::Float64=0.01, evollink::Bool=false, mulink::Float64=0.0, sigmapn::Float64=0.05, sigmapr::Float64=0.01,clink::Float64=0.0,retint::Int64=0, funnoevollink::Function=networkitCoauthor, funevollink::Function=networkitCoauthorEvolLink,delta::Float64=1.0,payfun::Function=linpay,netsaveint::Int64=1)
+function runSimNetSave(;pn::Float64=0.5, pr::Float64=0.1, netsize::Int64=100, generations::Int64=100, b::Float64=1.0, c::Float64=0.5, d::Float64=0.0, mu::Float64=0.01, evollink::Bool=false, mulink::Float64=0.0, sigmapn::Float64=0.05, sigmapr::Float64=0.01,clink::Float64=0.0,retint::Int64=0, funnoevollink::Function=networkitCoauthor, funevollink::Function=networkitCoauthorEvolLink,delta::Float64=1.0,payfun::Function=linpay,netsaveint::Int64=1)
 
 ## Burn-in period
     ## Initialize the network randomly
-    netw=rand([0,1],(netsize,netsize));
+    netw = rand([0,1],(netsize,netsize));
     netw = netw .* transpose(netw);
-    for(i) in 1:netsize
-        netw[i, i] = 0
-    end
+    netw = (1 .- diagm([1 for i=1:netsize])).*netw;
     for i in 1:(netsize*20) ##First iterate the network for 20 generations (i.e., 20*netsize time steps) neutrally to get a steady state network
-      netw = networkiterate(netw, pn, pr, netsize)
+      netw = networkiterate(netw,pn,pr,netsize)
     end
     types = rand([0,1],netsize) #initialize types at random
 
@@ -269,8 +242,8 @@ end
       else
           pifun = coauthpi
       end
-      pnhist=zeros(generations); ##initialize arrays to record history
-      prhist=zeros(generations);
+      pnhist = zeros(generations); ##initialize arrays to record history
+      prhist = zeros(generations);
       typehist = zeros(generations);
       degreehist = zeros(generations);
       payoffhist = zeros(generations);
@@ -283,10 +256,10 @@ end
       for i in 1:(generations*retint)
         netw, types, pns, prs = funevollink(netw,types,pns,prs,netsize,b,c,mu,mulink,sigmapn,sigmapr,clink,d,delta,payfun)
         if mod(i,retint)==0
-          degrees = vec(sum(netw,1))
+          degrees = vec(sum(netw, dims=1))
           mdeg = mean(degrees)
           payoffs = payfun(delta, pifun(netw,types,b,c,d))
-          mpay=mean(payoffs)
+          mpay = mean(payoffs)
           pnhist[div(i,retint)]=mean(pns)
           prhist[div(i,retint)]=mean(prs)
           typehist[div(i,retint)]=mean(types)
@@ -315,14 +288,10 @@ end
       for i in 1:(generations*retint)
         netw, types = funnoevollink(netw,types,pn,pr,netsize,b,c,mu,d,delta,payfun)
         if mod(i,retint)==0
-            #degrees = vec(sum(netw,1))
-            degrees = zeros(netsize) #calculate degrees
-            for(i) in 1:netsize
-                degrees[i] = sum(netw[i])
-            end 
+            degrees = vec(sum(netw, dims=1))
             mdeg = mean(degrees)
             payoffs = payfun(delta, pifun(netw,types,b,c,d))
-            mpay=mean(payoffs)
+            mpay = mean(payoffs)
             typehist[div(i,retint)]=mean(types)
             degreehist[div(i, retint)]=mdeg
             payoffhist[div(i, retint)]=mpay
@@ -332,11 +301,6 @@ end
             end
         end
       end
-      data = zeros(5)
-      coopfreq = mean(typehist)
-      meandeg = mean(degreehist)
-      meanpay = mean(payoffhist)
-      data = (coopfreq, meandeg, meanpay)
-      return data
+      return (typehist, pn, pr, degreehist, payoffhist, nethist, typeshist, pn, pr)
     end
 end

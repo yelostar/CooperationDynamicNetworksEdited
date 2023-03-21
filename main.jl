@@ -10,7 +10,7 @@ using ArgParse
 using JLD
 
 ## Parameter object
-type NetworkParam
+struct NetworkParam
 
     pn::Float64
     pr::Float64
@@ -145,7 +145,7 @@ function main()
 
   sim_params = Dict()
   for (arg, val) in sim_args
-      sim_params[parse(arg)] = val
+      sim_params[Symbol(arg)] = val
   end
   params = NetworkParam(;sim_params...)
 
@@ -177,7 +177,7 @@ function main()
       for i in 1:params.replicates
           typehist, pnhist, prhist, degreehist, payoffhist, finnet, fintype, pnshist, prshist = simfun(;pn=params.pn, pr=params.pr, netsize=params.netsize, generations=params.generations, b=params.b, c=params.c, d=params.d, mu=params.mu, evollink=params.evollink, mulink=params.mulink, sigmapn=params.sigmapn, sigmapr=params.sigmapr, clink=params.clink, retint=params.retint, funnoevollink=funnoevollinkin, funevollink=funevollinkin, delta=params.delta,payfun=payfunin,netsaveint=params.networksaveint)
 
-          file = ismatch(r"\.jl", parsed_args["file"]) ? parsed_args["file"] : parsed_args["file"]*"-"*lpad(string(i), length(digits(params.replicates)), "0")*".jld"
+          file = occursin(r"\.jl", parsed_args["file"]) ? parsed_args["file"] : parsed_args["file"]*"-"*lpad(string(i), length(digits(params.replicates)), "0")*".jld"
 
           save(file, "params", params, "typehist", typehist, "pn", pnhist, "pr", prhist, "degree", degreehist, "payoff", payoffhist, "network", finnet, "types", fintype, "pns", pnshist, "prs", prshist)
       end
@@ -205,4 +205,4 @@ function main()
 end
 
 # Call up the main function.
-main()
+#main()
