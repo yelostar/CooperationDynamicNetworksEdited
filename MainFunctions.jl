@@ -301,6 +301,11 @@ end
             end
         end
       end
-      return (typehist, pn, pr, degreehist, payoffhist, nethist, typeshist, pn, pr)
+      data = zeros(5)
+      coopfreq = mean(typehist)
+      meandeg = mean(degreehist)
+      meanpay = mean(payoffhist)
+      data = (coopfreq, meandeg, meanpay)
+      return data
     end
 end
