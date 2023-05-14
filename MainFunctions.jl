@@ -174,8 +174,8 @@ end
       typehist = zeros(generations);
       degreehist = zeros(generations);
       payoffhist = zeros(generations);
-      prs = clamp.(randn(netsize)*sigmapr+pr,0,1);
-      pns = clamp.(randn(netsize)*sigmapn+pn,0,1);
+      prs = clamp.(randn(netsize).*sigmapr.+pr,0,1);
+      pns = clamp.(randn(netsize).*sigmapn.+pn,0,1);
       for i in 1:(generations*retint)
         netw, types, pns, prs = funevollink(netw,types,pns,prs,netsize,b,c,mu,mulink,sigmapn,sigmapr,clink,d,delta,payfun)
         if mod(i,retint)==0
@@ -251,8 +251,8 @@ end
       typeshist = zeros(Int,(netsize,div(generations,netsaveint)));
       pnshist = zeros(Float64,(netsize, div(generations, netsaveint)))
       prshist = zeros(Float64,(netsize, div(generations, netsaveint)))
-      prs = clamp.(randn(netsize)*sigmapr+pr,0,1);
-      pns = clamp.(randn(netsize)*sigmapn+pn,0,1);
+      prs = clamp.(randn(netsize).*sigmapr.+pr,0,1);
+      pns = clamp.(randn(netsize).*sigmapn.+pn,0,1);
       for i in 1:(generations*retint)
         netw, types, pns, prs = funevollink(netw,types,pns,prs,netsize,b,c,mu,mulink,sigmapn,sigmapr,clink,d,delta,payfun)
         if mod(i,retint)==0
@@ -273,7 +273,15 @@ end
           end
         end
       end
-      return (typehist, pnhist, prhist, degreehist, payoffhist, nethist, typeshist, pnshist, prshist)
+      data = zeros(5)
+      coopfreq = mean(typehist)
+      meandeg = mean(degreehist)
+      meanpay = mean(payoffhist)
+      meanpn = mean(pnshist)
+      meanpr = mean(prshist)
+      data = (coopfreq, meandeg, meanpn, meanpr, meanpay)
+      return data
+      #return (typehist, pnhist, prhist, degreehist, payoffhist, nethist, typeshist, pnshist, prshist)
     else
       if funnoevollink == networkitPD
           pifun = pdpi
