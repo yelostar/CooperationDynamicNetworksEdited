@@ -8,26 +8,26 @@ using CSV
 using Distributed
 backend(:plotly)
 
-addprocs(20) 
+addprocs(40) 
 @everywhere include("MainFunctions.jl")
 
 @everywhere function run_worker(inputs, results)
-    include("MainFunctions.jl")
     while true
         pard = take!(inputs)
-        println(pard["pn"], " ", pard["pr"], " in pard")
+        println(pard["ben"], " ", pard["cl"], " in pard")
         #coopFreq = runSimsReturn(; B=2.0, C=0.5, D=0.0, CL=0.0, gen=500, pnc=pard["pn"], pnd=pard["pn"], pr=pard["pr"], muP=0.001, reps=100)
-        coopFreq = runSimNetSave(pn=pard["pn"], pr=pard["pr"], generations=500, b=2.0, c=0.5, d=0.0, mu=0.001, evollink=true, delta=0.1,payfun=exppay)            
-            for(i) in 1:99
-                temp = runSimNetSave(pn=pard["pn"], pr=pard["pr"], generations=500, b=2.0, c=0.5, d=0.0, mu=0.001, evollink=true, delta=0.1,payfun=exppay)     
+        coopFreq = zeros(5)
+            for(i) in 1:10
+                temp = runSimNetSave(pn=0.5, pr=0.0001, generations=100000, b=pard["ben"], c=pard["cl"], d=0.0, mu=0.001, evollink=true, delta=0.1,payfun=exppay)     
+                println(temp["ben"], " ", temp["cl"], i, "'s CF: ", temp["coopFreq"])
                 coopFreq=coopFreq.+temp
             end
-            coopFreq=coopFreq./100
+        coopFreq=coopFreq./10
         #(coopfreq, meandeg, meanpn, meanpr, meanpay)
         Keys = ["coopFreq","degree","pn_end","pr_end","payoffs"]
         temp = Dict(zip(Keys, coopFreq))
         temp = merge(pard, temp)
-        println(temp["pn"], " ", temp["pr"], " CF: ", temp["coopFreq"])
+        println(temp["ben"], " ", temp["cl"], " CF: ", temp["coopFreq"])
         put!(results, temp)
     end
 end
@@ -35,11 +35,11 @@ end
 function fill_inputs(range,pars, nruns)
     for(i) in 1:range #PNC/PND 
         for(j) in 1:range #PNR 
-            vals = (i/(range), j/(20*range))
+            vals = (i*10/(range), j*0.4/(range))
             temp = copy(pars)
-            temp["pn"] = vals[1]
-            temp["pr"] = vals[2]
-            println(temp["pn"], " ", temp["pr"], "into inputs")
+            temp["ben"] = vals[1]
+            temp["cl"] = vals[2]
+            println(temp["ben"], " ", temp["cl"], "into inputs")
             nruns+=1
             put!(inputs, temp)
             #vals_arr.push(vals)
@@ -49,14 +49,14 @@ function fill_inputs(range,pars, nruns)
 end
 
 #notebook for running below
-range = 10        
+range = 20        
 inputs  = RemoteChannel(()->Channel{Dict}(range*range)) #2*nsets*maximum(pars["num_crossings"])
 results = RemoteChannel(()->Channel{Dict}(range*range))
         
 vals_arr = Array{Tuple}
 pars = Dict([
-        "pn" => 0.0,
-        "pr" => 0.0,
+        "ben" => 0.0,
+        "cl" => 0.0,
         "pn_end" => 0.0,
         "pr_end" => 0.0,
         "degree" => 0.0,
@@ -69,9 +69,9 @@ for w in workers() # start tasks on the workers to process requests in parallel
     remote_do(run_worker, w, inputs, results)
 end
 
-file = "datacollect_akcay_10.csv"
+file = "ben_cl_akcay_20_new.csv"
     cols = push!(sort(collect(keys(pars))),
-                 ["pn", "pr"]...)
+                 ["ben", "cl"]...)
     dat = DataFrame(Dict([(c, Any[]) for c in cols]))
 
 for sim in 1:nruns
